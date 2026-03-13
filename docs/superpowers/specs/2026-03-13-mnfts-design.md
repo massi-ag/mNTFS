@@ -2,7 +2,7 @@
 
 **Version:** 1.0 (Draft)
 **Date:** 2026-03-13
-**Author:** mNFTS Core Team
+**Author:** mNFTS Project
 **Status:** Approved for implementation planning
 
 ---
@@ -31,8 +31,9 @@
 | Version | Milestone | Features |
 |---|---|---|
 | **v0.1** | Read-only MVP | Mount NTFS volumes read-only via FSKit. CLI tool (`mnfts mount/unmount/status`). Basic file/folder reading. Unicode filenames. Finder visibility. Homebrew install. Crash watchdog. |
-| **v0.5** | Limited Write | Safe write operations: create files, write new files, delete files, rename. Journal replay on mount. Forced read-only fallback on any inconsistency. CLI write-enable flag (`--rw`). Basic logging/diagnostics. |
-| **v1.0** | Stable Release | Menu bar GUI app. Auto-mount on drive insertion. Notarized DMG installer. Modify existing files. Large file support (>4GB). Disk Utility visibility. Update notifications. Comprehensive diagnostics UI. |
+| **v0.5** | Limited Write | Safe write operations: create files, write new files, delete files, rename. Journal write support (not replay). Forced read-only fallback on any inconsistency. CLI write-enable flag (`--rw`). Basic logging/diagnostics. **Note:** If power loss occurs during a write, the volume will require Windows `chkdsk` before write mode is available again (mNFTS does not replay journals in v0.5). |
+| **v0.7** | Extended Write | Modify existing file contents. Cross-directory move. Truncate/extend files. Reparse point/symlink read resolution. Set timestamps/attributes. Delete non-empty directories. |
+| **v1.0** | Stable Release | Menu bar GUI app. Auto-mount on drive insertion. Notarized DMG installer. Journal replay on mount. Large file write support (>4GB). Symlink creation. Disk Utility visibility. Update notifications. Comprehensive diagnostics UI. |
 
 ### 2.2 Out of Scope
 
@@ -111,8 +112,8 @@
 │  /dev/diskNsN (USB/SSD)                          │
 └─────────────────────────────────────────────────┘
 
-CLI: mnfts (Swift) ──→ XPC ──→ FSKit Module
-GUI: mNFTS.app (Swift, menu bar) ──→ XPC ──→ FSKit Module
+CLI: mnfts (Swift) ──→ FSKit management APIs ──→ FSKit Module
+GUI: mNFTS.app (Swift, menu bar) ──→ FSKit management APIs ──→ FSKit Module
 ```
 
 ### 4.2 Components
@@ -120,14 +121,14 @@ GUI: mNFTS.app (Swift, menu bar) ──→ XPC ──→ FSKit Module
 | Component | Language | Role |
 |---|---|---|
 | `libmnfts` | Rust | NTFS parsing, read/write logic, journal handling, safety checks. The brain. |
-| FSKit Module | Swift | Thin FSKit `FSUnaryFileSystem` subclass. Translates VFS ops → `libmnfts` C-ABI calls. |
-| `mnfts` CLI | Swift | User-facing command-line tool. Communicates with FSKit module via XPC to trigger mount/unmount/status. |
+| FSKit Module | Swift | Thin FSKit filesystem subclass (likely `FSUnaryFileSystem` or `FSBlockDeviceFileSystem` — to be confirmed in Phase 0 PoC). Translates VFS ops → `libmnfts` C-ABI calls via direct FFI (Rust linked into the extension). |
+| `mnfts` CLI | Swift | User-facing command-line tool. Uses FSKit management APIs to trigger mount/unmount/status. |
 | mNFTS.app | Swift | Menu bar app (v1.0). Auto-mount, status display, preferences. |
-| Watchdog | Swift | launchd agent. Monitors FSKit extension health. Force-unmounts on crash. |
+| Watchdog | Swift | launchd agent. Monitors FSKit extension process via `kqueue` / `EVFILT_PROC` (dispatch source for process exit). On extension crash: force-unmounts volume, writes crash report to `~/Library/Logs/mNFTS/`. Detection SLA: <2 seconds. |
 
 ### 4.3 Block Device I/O Layer (`libmnfts::io`)
 
-- Raw block reads/writes against `/dev/rdiskNsN` (character device for unbuffered I/O)
+- Block device access through FSKit's provided `FSBlockDeviceResource` handle (not direct `/dev/rdisk` opens — FSKit manages device access within its sandbox). Exact API to be confirmed in Phase 0. Fallback: if FSKit provides a file descriptor or device path, use that directly.
 - Read-ahead buffer for sequential access patterns (configurable, default 1MB)
 - All writes go through a single write gate that checks a `ReadWriteMode` enum — if it's `ReadOnly`, the write panics at the Rust level before any bytes hit disk
 - Block cache with LRU eviction (in-process, no persistence)
@@ -143,7 +144,7 @@ GUI: mNFTS.app (Swift, menu bar) ──→ XPC ──→ FSKit Module
 - MFT records cached in-memory on first access, evicted under memory pressure
 - File attribute resolution follows NTFS precedence: `$STANDARD_INFORMATION` → `$FILE_NAME` → `$DATA`
 - Timestamps mapped to macOS conventions (NTFS uses Windows FILETIME, 100ns since 1601 → converted to `timespec`)
-- File IDs: NTFS MFT reference numbers mapped to FSKit `FSItemID`
+- File IDs: full 64-bit NTFS MFT reference (48-bit record number + 16-bit sequence number) mapped to FSKit `FSItemID`. The sequence number prevents stale references after delete+create reuses an MFT slot.
 
 ### 4.6 Read Path
 
@@ -173,6 +174,7 @@ Every write is journaled. If any step fails, the journal entry is uncommitted an
 - `mnfts mount` → discovers device → validates NTFS boot sector → opens block device → registers with FSKit → volume appears in `/Volumes/`
 - `mnfts unmount` → flushes all caches → writes journal → closes block device → deregisters from FSKit
 - Auto-mount (v1.0): DiskArbitration framework callback on device insertion → trigger FSKit mount
+- Concurrent mount prevention: FSKit manages filesystem registration — a second mount attempt for an already-mounted device is rejected by the framework. The CLI should detect this and report "volume already mounted at /Volumes/X" rather than letting FSKit return a cryptic error.
 
 ### 4.9 Journaling / Crash-Safety Strategy
 
@@ -194,15 +196,15 @@ Every write is journaled. If any step fails, the journal entry is uncommitted an
 
 - Structured logging via Rust `tracing` crate, forwarded to `os_log` via the Swift bridge
 - Log levels: error (always), warn (default), info, debug, trace
-- `mnfts inspect <device>` — dumps volume metadata (boot sector, MFT summary, journal state) without mounting
+- `mnfts inspect <device>` — raw metadata dump for developers (boot sector fields, MFT record counts, journal state flags, NTFS version). Machine-readable with `--json`. Does not mount.
+- `mnfts doctor <device>` — human-readable health report for users ("Volume is clean", "3 files have corrupt MFT records", "Journal is dirty — run chkdsk"). Runs read-only validation checks. Does not mount.
 - Crash reports written to `~/Library/Logs/mNFTS/`
-- `mnfts doctor <device>` — runs read-only health checks and reports issues
 
 ### 4.12 CLI / GUI Relationship
 
 - CLI and GUI are independent frontends to the same FSKit module
 - No shared state between them — FSKit module is the single source of truth
-- GUI wraps the same XPC calls the CLI makes, plus DiskArbitration callbacks for auto-mount
+- Both use FSKit management APIs to trigger mount/unmount. GUI adds DiskArbitration callbacks for auto-mount.
 - Both can be installed independently; GUI is not required
 
 ### 4.13 Update Strategy
@@ -242,7 +244,7 @@ Every write is journaled. If any step fails, the journal entry is uncommitted an
 | Wrapping ntfs-3g in a shim | GPL contaminates MIT. C code undermines safety. | Clean-room Rust implementation. |
 | Skipping journal writes for "simple" operations | One crash during unjournaled write corrupts the volume. | Journal every metadata mutation. No exceptions. |
 | Treating NTFS as "just FAT with extra steps" | Complex B-tree indexes, MFT self-referencing, attribute nesting. | Invest time understanding MFT and attribute model deeply. |
-| Using `unsafe` Rust for performance | Defeats the safety proposition. | Zero `unsafe` in NTFS code. Only at FFI boundary and block I/O syscalls. Each `unsafe` block requires a `// SAFETY:` comment. |
+| Using `unsafe` Rust for performance | Defeats the safety proposition. | Zero `unsafe` in `libmnfts::ntfs`, `libmnfts::journal`, and `libmnfts::safety` modules. `unsafe` permitted only in `libmnfts::ffi` (C-ABI boundary) and `libmnfts::io` (block device syscalls). Each `unsafe` block requires a `// SAFETY:` comment explaining why it's sound. |
 | Copying on-disk structures with `repr(C)` and raw casts | Endianness bugs, alignment issues, UB. | Explicit deserialization (the `ntfs` crate already does this). |
 
 ---
@@ -300,7 +302,7 @@ Every write is journaled. If any step fails, the journal entry is uncommitted an
 |---|---|---|
 | S1 | No write shall occur when the volume is in read-only mode | Rust type-state pattern. Code that writes cannot compile against a read-only handle. |
 | S2 | No metadata write shall occur without a journal entry | Write path requires a `JournalTransaction` token as a function parameter — can't call without one. |
-| S3 | A dirty volume is always mounted read-only | `$LogFile` dirty flag checked on mount. If dirty → read-only. Override requires `--force-rw` plus confirmation. |
+| S3 | A dirty volume is always mounted read-only | `$LogFile` dirty flag checked on mount. If dirty → read-only. Override requires `--force-rw` flag which prompts interactive `y/N` confirmation (TTY required). For scripts: `--force-rw --yes` bypasses the prompt. |
 | S4 | A crash always results in a safe state | Watchdog force-unmounts within 2 seconds. Next mount detects dirty journal → read-only. |
 | S5 | Unsupported NTFS features never block read access | Unknown attributes are skipped, not errored. Files with unsupported features are visible but may show degraded metadata. |
 | S6 | Write mode is never the default | CLI requires `--rw`. GUI requires explicit toggle. First-time users always get read-only. |
@@ -357,7 +359,8 @@ Every write is journaled. If any step fails, the journal entry is uncommitted an
 - Attribute length exceeds record bounds → skip attribute, log, continue.
 
 **Partially supported features:**
-- Compressed files: visible but return `ENOTSUP` on read.
+- Sparse files: read allocated regions normally, return zeros for unallocated regions (correct NTFS semantics). Report file as sparse in `mnfts inspect` output. Never write to sparse files.
+- Compressed files: visible but return `ENOTSUP` on read. Flagged in `mnfts doctor`.
 - Encrypted files (EFS): visible, unreadable, clear error.
 - Alternate data streams: ignored. Default `$DATA` stream only.
 - Reparse points / symlinks: show as regular files in v0.1, resolve in v0.7.
@@ -374,7 +377,7 @@ Every write is journaled. If any step fails, the journal entry is uncommitted an
 |---|---|---|---|---|
 | Basic files and folders | Yes | Create/delete v0.5, modify v0.7 | Low | v0.1 read, v0.5 write |
 | Unicode filenames (UTF-16) | Yes | v0.5 | Low | v0.1 |
-| Long filenames + 8.3 short names | Yes (both) | Generate 8.3 on create v0.5 | Medium | v0.1 read |
+| Long filenames + 8.3 short names | Yes (both) | v0.5: create files without 8.3 short name (valid when volume has 8.3 creation disabled). v0.7+: generate 8.3 per Microsoft Open Specification algorithm with `~N` collision avoidance. | Medium | v0.1 read |
 | Rename (same directory) | — | v0.5 | Low | v0.5 |
 | Rename (cross-directory move) | — | v0.7 | Medium | v0.7 |
 | Delete files | — | v0.5 | Low | v0.5 |
@@ -476,6 +479,27 @@ Every write is journaled. If any step fails, the journal entry is uncommitted an
 
 **AI assists:** Test generation, property-based tests, cross-validation scripts. **AI must NOT write journal or B-tree code without human review.**
 
+### Phase 3b: Extended Write / v0.7 (4 weeks)
+
+**Deliverables:**
+- Modify existing file contents (overwrite, no resize initially)
+- Cross-directory move (atomic two-index update)
+- Truncate/extend existing files
+- Delete non-empty directories (recursive)
+- Reparse point and symlink read resolution
+- Set timestamps and attributes
+- 8.3 short name generation per Microsoft Open Specification
+- Extended cross-validation suite for all new write operations
+
+**Risks:** Cross-directory moves require atomic two-index updates — crash between them orphans files. Existing-file modification touches data run splitting.
+
+**Exit criteria:**
+- All v0.5 exit criteria still passing.
+- Modify 500 existing files, move 200 across directories — `chkdsk` clean after each batch.
+- Power-loss simulation at every new write step.
+
+**AI assists:** Test generation for new operations. **Human writes all cross-directory and data-run-splitting code.**
+
 ### Phase 4: Public Beta / v0.5 Release (3 weeks)
 
 **Deliverables:**
@@ -514,7 +538,7 @@ Every write is journaled. If any step fails, the journal entry is uncommitted an
 
 **AI assists:** SwiftUI, installer automation, docs, website. **AI must NOT write journal replay unsupervised.**
 
-### Total: ~26 weeks (~6 months) full-time with AI assistance.
+### Total: ~30 weeks (~7.5 months) full-time with AI assistance.
 
 ---
 
@@ -939,7 +963,7 @@ No write path exists in the code. Block device opened read-only at the fd level.
 
 **Safety:** Read-only default. Type-state write gate. Journal every mutation. Watchdog force-unmount on crash. Dirty volumes always read-only.
 
-**Write support timeline:** v0.5 (~4 months): create/delete/rename. v1.0 (~6 months): modify, large files, GUI, auto-mount.
+**Write support timeline:** v0.5 (~4 months): create/delete/rename. v0.7 (~5 months): modify existing files, cross-dir move. v1.0 (~7.5 months): journal replay, large file writes, GUI, auto-mount.
 
 **Day 1 actions:**
 1. Create repo with Rust workspace + Swift package
