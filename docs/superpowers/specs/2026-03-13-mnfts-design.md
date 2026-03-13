@@ -959,7 +959,7 @@ No write path exists in the code. Block device opened read-only at the fd level.
 
 **v0.1 (ship in 90 days):** Read-only mount of NTFS USB/SSD drives. CLI only. Homebrew.
 
-**Architecture:** Rust `libmnfts` → C-ABI → Swift FSKit `FSUnaryFileSystem` → Finder. No kext, no FUSE, no sudo.
+**Architecture:** Rust `libmnfts` → C-ABI → Swift FSKit filesystem subclass → Finder. No kext, no FUSE, no sudo.
 
 **Safety:** Read-only default. Type-state write gate. Journal every mutation. Watchdog force-unmount on crash. Dirty volumes always read-only.
 
