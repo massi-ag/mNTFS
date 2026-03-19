@@ -48,10 +48,7 @@ fn main() {
 
             match list_directory(&mut volume, "/") {
                 Ok(entries) => {
-                    println!(
-                        "{:<40} {:>10} {:>5} MFT#",
-                        "Name", "Size", "Dir?"
-                    );
+                    println!("{:<40} {:>10} {:>5} MFT#", "Name", "Size", "Dir?");
                     println!("{}", "-".repeat(65));
                     for entry in &entries {
                         println!(
@@ -125,8 +122,7 @@ fn main() {
                                             && sub.file_size > 0
                                             && sub.file_size < 4096
                                         {
-                                            let sub_path =
-                                                format!("/{}/{}", entry.name, sub.name);
+                                            let sub_path = format!("/{}/{}", entry.name, sub.name);
                                             if let Ok(data) = read_file(&mut volume, &sub_path)
                                                 && data.iter().all(|&b| {
                                                     b.is_ascii() || b == b'\n' || b == b'\r'
@@ -206,7 +202,7 @@ impl AlignedReader {
             device_size: u64::MAX, // will be refined on EOF
             position: 0,
             buf: vec![0u8; sector_size as usize * 128], // 64KB buffer
-            buf_offset: u64::MAX,                        // invalid, forces first fill
+            buf_offset: u64::MAX,                       // invalid, forces first fill
             buf_len: 0,
         })
     }
