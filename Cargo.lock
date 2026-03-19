@@ -352,6 +352,7 @@ name = "libmnfts"
 version = "0.1.0"
 dependencies = [
  "cbindgen",
+ "libc",
  "ntfs",
  "thiserror",
  "tracing",

@@ -6,6 +6,7 @@ let package = Package(
     platforms: [.macOS(.v15)],
     products: [
         .executable(name: "mnfts", targets: ["MNFTSCLI"]),
+        .executable(name: "mnfts-watchdog", targets: ["MNFTSWatchdog"]),
     ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.5.0"),
@@ -30,6 +31,11 @@ let package = Package(
             dependencies: [
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
             ]
+        ),
+        .executableTarget(
+            name: "MNFTSWatchdog",
+            dependencies: [],
+            exclude: ["com.mnfts.watchdog.plist"]
         ),
     ]
 )
