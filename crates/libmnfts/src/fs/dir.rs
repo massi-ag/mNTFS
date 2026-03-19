@@ -1,5 +1,5 @@
 use crate::error::{MnftsError, Result};
-use crate::fs::metadata::{filetime_to_system_time, DirEntry};
+use crate::fs::metadata::{DirEntry, filetime_to_system_time};
 use crate::volume::NtfsVolume;
 use ntfs::indexes::NtfsFileNameIndex;
 use ntfs::structured_values::{NtfsFileAttributeFlags, NtfsFileNamespace};
@@ -21,14 +21,13 @@ pub fn list_directory<R: Read + Seek>(
                 }
                 let index = current.directory_index(reader)?;
                 let mut finder = index.finder();
-                let entry =
-                    NtfsFileNameIndex::find(&mut finder, ntfs, reader, component)
-                        .ok_or_else(|| {
-                            MnftsError::Io(std::io::Error::new(
-                                std::io::ErrorKind::NotFound,
-                                format!("Path not found: {}", component),
-                            ))
-                        })??;
+                let entry = NtfsFileNameIndex::find(&mut finder, ntfs, reader, component)
+                    .ok_or_else(|| {
+                        MnftsError::Io(std::io::Error::new(
+                            std::io::ErrorKind::NotFound,
+                            format!("Path not found: {}", component),
+                        ))
+                    })??;
                 current = entry.to_file(ntfs, reader)?;
                 if !current.is_directory() {
                     return Err(MnftsError::Io(std::io::Error::new(
@@ -87,12 +86,9 @@ pub fn list_directory<R: Read + Seek>(
             let is_compressed = file_attributes.contains(NtfsFileAttributeFlags::COMPRESSED);
             let is_encrypted = file_attributes.contains(NtfsFileAttributeFlags::ENCRYPTED);
 
-            let created =
-                filetime_to_system_time(file_name.creation_time().nt_timestamp());
-            let modified =
-                filetime_to_system_time(file_name.modification_time().nt_timestamp());
-            let accessed =
-                filetime_to_system_time(file_name.access_time().nt_timestamp());
+            let created = filetime_to_system_time(file_name.creation_time().nt_timestamp());
+            let modified = filetime_to_system_time(file_name.modification_time().nt_timestamp());
+            let accessed = filetime_to_system_time(file_name.access_time().nt_timestamp());
 
             entries.push(DirEntry {
                 name,

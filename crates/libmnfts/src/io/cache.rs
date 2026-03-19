@@ -29,10 +29,10 @@ impl BlockCache {
     pub fn put(&mut self, block_num: u64, data: Vec<u8>) {
         if self.map.contains_key(&block_num) {
             self.order.retain(|&b| b != block_num);
-        } else if self.map.len() >= self.capacity {
-            if let Some(evicted) = self.order.pop_front() {
-                self.map.remove(&evicted);
-            }
+        } else if self.map.len() >= self.capacity
+            && let Some(evicted) = self.order.pop_front()
+        {
+            self.map.remove(&evicted);
         }
         self.map.insert(block_num, data);
         self.order.push_back(block_num);

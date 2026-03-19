@@ -4,10 +4,7 @@ use ntfs::indexes::NtfsFileNameIndex;
 use std::io::{Read, Seek, SeekFrom};
 
 /// Read the entire contents of a file by path.
-pub fn read_file<R: Read + Seek>(
-    volume: &mut NtfsVolume<R>,
-    path: &str,
-) -> Result<Vec<u8>> {
+pub fn read_file<R: Read + Seek>(volume: &mut NtfsVolume<R>, path: &str) -> Result<Vec<u8>> {
     volume.with_ntfs(|ntfs, reader| {
         let components: Vec<&str> = path
             .trim_start_matches('/')
@@ -27,14 +24,14 @@ pub fn read_file<R: Read + Seek>(
         for (i, component) in components.iter().enumerate() {
             let index = current_dir.directory_index(reader)?;
             let mut finder = index.finder();
-            let entry =
-                NtfsFileNameIndex::find(&mut finder, ntfs, reader, component)
-                    .ok_or_else(|| {
-                        MnftsError::Io(std::io::Error::new(
-                            std::io::ErrorKind::NotFound,
-                            format!("Not found: {}", component),
-                        ))
-                    })??;
+            let entry = NtfsFileNameIndex::find(&mut finder, ntfs, reader, component).ok_or_else(
+                || {
+                    MnftsError::Io(std::io::Error::new(
+                        std::io::ErrorKind::NotFound,
+                        format!("Not found: {}", component),
+                    ))
+                },
+            )??;
 
             if i == components.len() - 1 {
                 // Last component: read the file's data
@@ -86,7 +83,10 @@ pub fn read_file_range<R: Read + Seek>(
         if let Some(Ok(data_item)) = file.data(reader, "") {
             let data_attr = data_item.to_attribute()?;
 
-            if data_attr.flags().contains(ntfs::NtfsAttributeFlags::COMPRESSED) {
+            if data_attr
+                .flags()
+                .contains(ntfs::NtfsAttributeFlags::COMPRESSED)
+            {
                 return Err(MnftsError::Io(std::io::Error::new(
                     std::io::ErrorKind::Unsupported,
                     "Compressed NTFS files are not supported. File is visible but cannot be read.",
@@ -100,8 +100,7 @@ pub fn read_file_range<R: Read + Seek>(
                 return Ok(Vec::new());
             }
 
-            let actual_length =
-                std::cmp::min(length as u64, file_size - offset) as usize;
+            let actual_length = std::cmp::min(length as u64, file_size - offset) as usize;
             let mut buf = vec![0u8; actual_length];
 
             let mut attached = value.attach(reader);

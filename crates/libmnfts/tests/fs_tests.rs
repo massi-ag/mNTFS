@@ -16,10 +16,7 @@ fn test_filetime_to_system_time_epoch() {
     // = 125911584000000000 (100ns ticks since 1601-01-01)
     let ft: u64 = 125_911_584_000_000_000;
     let st = filetime_to_system_time(ft).unwrap();
-    let unix_secs = st
-        .duration_since(SystemTime::UNIX_EPOCH)
-        .unwrap()
-        .as_secs();
+    let unix_secs = st.duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs();
     // 2000-01-01 = 946684800 unix timestamp
     assert_eq!(unix_secs, 946_684_800);
 }
@@ -94,10 +91,7 @@ fn test_read_second_file() {
     let image_data = std::fs::read(test_image_path("basic.img")).unwrap();
     let mut volume = NtfsVolume::open(Cursor::new(image_data)).unwrap();
     let contents = read_file(&mut volume, "/test2.txt").unwrap();
-    assert_eq!(
-        String::from_utf8_lossy(&contents),
-        "Another test file\n"
-    );
+    assert_eq!(String::from_utf8_lossy(&contents), "Another test file\n");
 }
 
 #[test]
