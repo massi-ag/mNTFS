@@ -1,7 +1,6 @@
 use crate::error::{MnftsError, Result};
 use crate::volume::NtfsVolume;
 use ntfs::indexes::NtfsFileNameIndex;
-use ntfs::NtfsReadSeek;
 use std::io::{Read, Seek, SeekFrom};
 
 /// Read the entire contents of a file by path.
