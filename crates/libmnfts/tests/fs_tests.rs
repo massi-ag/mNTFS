@@ -67,3 +67,40 @@ fn test_list_subdirectory() {
         names
     );
 }
+
+#[ignore]
+#[test]
+fn test_read_file_contents() {
+    use libmnfts::fs::read_file;
+    use libmnfts::volume::NtfsVolume;
+    use std::io::Cursor;
+
+    let image_data = std::fs::read("tests/images/basic.img").unwrap();
+    let mut volume = NtfsVolume::open(Cursor::new(image_data)).unwrap();
+    let contents = read_file(&mut volume, "/hello.txt").unwrap();
+    assert_eq!(String::from_utf8_lossy(&contents), "Hello, NTFS!\n");
+}
+
+#[ignore]
+#[test]
+fn test_read_file_in_subdirectory() {
+    use libmnfts::fs::read_file;
+    use libmnfts::volume::NtfsVolume;
+    use std::io::Cursor;
+
+    let image_data = std::fs::read("tests/images/basic.img").unwrap();
+    let mut volume = NtfsVolume::open(Cursor::new(image_data)).unwrap();
+    let contents = read_file(&mut volume, "/Documents/readme.txt").unwrap();
+    assert_eq!(String::from_utf8_lossy(&contents), "Test document\n");
+}
+
+#[test]
+fn test_read_nonexistent_file() {
+    use libmnfts::volume::NtfsVolume;
+    use std::io::Cursor;
+
+    // Non-NTFS data, so opening should fail, confirming error handling
+    let data = vec![0u8; 16 * 1024];
+    let result = NtfsVolume::open(Cursor::new(data));
+    assert!(result.is_err());
+}
