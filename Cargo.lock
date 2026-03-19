@@ -386,6 +386,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "mnfts-validate"
+version = "0.1.0"
+dependencies = [
+ "libmnfts",
+]
+
+[[package]]
 name = "nt-string"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
