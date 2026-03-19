@@ -106,12 +106,21 @@ fn main() {
     println!("\n=== Validation complete ===");
 }
 
-/// Open a device or image file with buffering.
-/// Raw devices (/dev/rdisk*) require sector-aligned I/O.
-/// BufReader handles this by reading in large aligned chunks.
+/// Open a device or image file.
+/// Raw devices (/dev/rdisk*) require sector-aligned I/O that BufReader
+/// cannot guarantee. Automatically redirect to the buffered device node.
 fn open_device(path: &str) -> std::io::Result<BufReader<File>> {
-    let file = File::open(path)?;
-    // 64KB buffer ensures reads are aligned to any sector size
+    let actual_path = if path.contains("/dev/rdisk") {
+        let buffered = path.replace("/dev/rdisk", "/dev/disk");
+        eprintln!(
+            "Note: redirecting raw device {} to buffered device {}",
+            path, buffered
+        );
+        buffered
+    } else {
+        path.to_string()
+    };
+    let file = File::open(&actual_path)?;
     Ok(BufReader::with_capacity(64 * 1024, file))
 }
 
