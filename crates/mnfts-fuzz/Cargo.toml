@@ -1,0 +1,14 @@
+[package]
+name = "mnfts-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+
+[dependencies]
+libfuzzer-sys = "0.4"
+libmnfts = { path = "../libmnfts" }
+
+[[bin]]
+name = "mft_parser"
+path = "fuzz/fuzz_targets/mft_parser.rs"
+doc = false
