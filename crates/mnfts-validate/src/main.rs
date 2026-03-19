@@ -4,6 +4,7 @@ use libmnfts::inspect;
 use libmnfts::volume::NtfsVolume;
 use std::env;
 use std::fs::File;
+use std::io::BufReader;
 
 fn main() {
     let device = env::args().nth(1).unwrap_or_else(|| {
@@ -18,7 +19,7 @@ fn main() {
 
     // 1. Inspect
     println!("--- Volume Inspection ---");
-    let mut file = File::open(&device).unwrap_or_else(|e| {
+    let mut file = open_device(&device).unwrap_or_else(|e| {
         eprintln!("Failed to open {}: {}", device, e);
         eprintln!("Hint: try /dev/rdisk4s1 (raw device) or run with sudo");
         std::process::exit(1);
@@ -30,7 +31,7 @@ fn main() {
 
     // 2. Doctor
     println!("\n--- Health Check ---");
-    let mut file = File::open(&device).unwrap();
+    let mut file = open_device(&device).unwrap();
     match doctor::check_volume(&mut file) {
         Ok(report) => print!("{}", report),
         Err(e) => eprintln!("Doctor failed: {}", e),
@@ -38,7 +39,7 @@ fn main() {
 
     // 3. Mount + list root
     println!("\n--- Root Directory ---");
-    let file = File::open(&device).unwrap();
+    let file = open_device(&device).unwrap();
     match NtfsVolume::open(file) {
         Ok(mut volume) => {
             println!("Volume label: {}", volume.label());
@@ -103,6 +104,15 @@ fn main() {
     }
 
     println!("\n=== Validation complete ===");
+}
+
+/// Open a device or image file with buffering.
+/// Raw devices (/dev/rdisk*) require sector-aligned I/O.
+/// BufReader handles this by reading in large aligned chunks.
+fn open_device(path: &str) -> std::io::Result<BufReader<File>> {
+    let file = File::open(path)?;
+    // 64KB buffer ensures reads are aligned to any sector size
+    Ok(BufReader::with_capacity(64 * 1024, file))
 }
 
 fn format_size(bytes: u64) -> String {
