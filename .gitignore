@@ -1,0 +1,25 @@
+# Worktrees
+.worktrees/
+
+# Rust
+/target/
+crates/*/target/
+
+# Swift
+swift/.build/
+swift/.swiftpm/
+
+# macOS
+.DS_Store
+
+# IDE
+.idea/
+.vscode/
+*.xcodeproj/
+*.xcworkspace/
+
+# Build artifacts
+*.o
+*.d
+*.dylib
+*.a
