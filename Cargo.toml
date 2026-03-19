@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/libmnfts"]
+members = ["crates/libmnfts", "crates/mnfts-validate"]
 resolver = "2"
 
 [workspace.package]
