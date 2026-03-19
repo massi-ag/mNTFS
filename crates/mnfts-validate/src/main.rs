@@ -49,8 +49,8 @@ fn main() {
             match list_directory(&mut volume, "/") {
                 Ok(entries) => {
                     println!(
-                        "{:<40} {:>10} {:>5} {}",
-                        "Name", "Size", "Dir?", "MFT#"
+                        "{:<40} {:>10} {:>5} MFT#",
+                        "Name", "Size", "Dir?"
                     );
                     println!("{}", "-".repeat(65));
                     for entry in &entries {
@@ -128,16 +128,15 @@ fn main() {
                                             let sub_path =
                                                 format!("/{}/{}", entry.name, sub.name);
                                             if let Ok(data) = read_file(&mut volume, &sub_path)
-                                            {
-                                                if data.iter().all(|&b| {
+                                                && data.iter().all(|&b| {
                                                     b.is_ascii() || b == b'\n' || b == b'\r'
-                                                }) {
-                                                    println!(
-                                                        "  Content of {}: {}",
-                                                        sub.name,
-                                                        String::from_utf8_lossy(&data).trim()
-                                                    );
-                                                }
+                                                })
+                                            {
+                                                println!(
+                                                    "  Content of {}: {}",
+                                                    sub.name,
+                                                    String::from_utf8_lossy(&data).trim()
+                                                );
                                             }
                                         }
                                     }

@@ -22,8 +22,46 @@ typedef enum mnfts_MnftsResult {
   ERR_UNSUPPORTED_VERSION = 5,
   ERR_HEALTH_CHECK = 6,
   ERR_NULL_POINTER = 7,
+  ERR_NOT_FOUND = 8,
+  ERR_UNSUPPORTED = 9,
   ERR_INTERNAL = 99,
 } mnfts_MnftsResult;
+
+/**
+ * Opaque FFI handle wrapping the volume in a Mutex for thread safety.
+ * FSKit may dispatch callbacks from different threads.
+ */
+typedef struct mnfts_MnftsVolumeHandle mnfts_MnftsVolumeHandle;
+
+/**
+ * Callback for directory enumeration.
+ * Rust calls this once per entry. Swift copies what it needs inside the callback.
+ * name_ptr is UTF-8 bytes, valid only during the callback.
+ */
+typedef void (*mnfts_MnftsDirEntryCallback)(void *context,
+                                            const uint8_t *name_ptr,
+                                            uint32_t name_len,
+                                            bool is_directory,
+                                            uint64_t file_size,
+                                            uint64_t mft_reference,
+                                            int64_t created_secs,
+                                            int64_t modified_secs,
+                                            int64_t accessed_secs);
+
+/**
+ * File metadata returned by mnfts_stat. Caller-allocated.
+ */
+typedef struct mnfts_MnftsFileInfo {
+  uint64_t file_size;
+  bool is_directory;
+  bool is_sparse;
+  bool is_compressed;
+  bool is_encrypted;
+  uint64_t mft_reference;
+  int64_t created_secs;
+  int64_t modified_secs;
+  int64_t accessed_secs;
+} mnfts_MnftsFileInfo;
 
 /**
  * Returns MnftsResult::Ok. Used to verify FFI linkage works.
@@ -34,5 +72,60 @@ enum mnfts_MnftsResult mnfts_ping(void);
  * Returns the library version as a static C string.
  */
 const char *mnfts_version(void);
+
+/**
+ * Open an NTFS volume from a file descriptor.
+ * Returns an opaque handle, or null on failure.
+ * The caller must eventually call mnfts_close_volume.
+ */
+struct mnfts_MnftsVolumeHandle *mnfts_open_volume(int32_t fd);
+
+/**
+ * Close a volume handle and free its resources.
+ */
+void mnfts_close_volume(struct mnfts_MnftsVolumeHandle *handle);
+
+/**
+ * Get the volume label. Writes UTF-8 into the provided buffer.
+ * Returns the number of bytes written, or 0 on error.
+ */
+uint32_t mnfts_volume_label(const struct mnfts_MnftsVolumeHandle *handle,
+                            uint8_t *buf,
+                            uint32_t buf_len);
+
+/**
+ * Check if the volume is healthy.
+ */
+bool mnfts_volume_is_healthy(const struct mnfts_MnftsVolumeHandle *handle);
+
+/**
+ * Enumerate directory entries at the given path.
+ * Calls `callback` once per entry. Rust owns all memory.
+ * Swift copies what it needs inside the callback.
+ */
+enum mnfts_MnftsResult mnfts_readdir(struct mnfts_MnftsVolumeHandle *handle,
+                                     const uint8_t *path_ptr,
+                                     uint32_t path_len,
+                                     mnfts_MnftsDirEntryCallback callback,
+                                     void *context);
+
+/**
+ * Get file metadata by MFT reference. Fills caller-allocated MnftsFileInfo.
+ */
+enum mnfts_MnftsResult mnfts_stat(struct mnfts_MnftsVolumeHandle *handle,
+                                  const uint8_t *path_ptr,
+                                  uint32_t path_len,
+                                  struct mnfts_MnftsFileInfo *out);
+
+/**
+ * Read file data by MFT reference at given offset into caller-provided buffer.
+ * Returns actual bytes read via `out_len`.
+ */
+enum mnfts_MnftsResult mnfts_read_file(struct mnfts_MnftsVolumeHandle *handle,
+                                       uint64_t mft_ref,
+                                       uint64_t offset,
+                                       uint8_t *buf,
+                                       uint32_t buf_len,
+                                       uint32_t *out_len);
 
 #endif  /* LIBMNFTS_H */

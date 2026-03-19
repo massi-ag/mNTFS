@@ -8,6 +8,7 @@ license.workspace = true
 crate-type = ["staticlib", "lib"]
 
 [dependencies]
+libc = "0.2"
 ntfs = "0.4"
 thiserror = "2"
 tracing = "0.1"
