@@ -1,0 +1,2 @@
+# Track NTFS disk images with Git LFS
+tests/images/*.img filter=lfs diff=lfs merge=lfs -text

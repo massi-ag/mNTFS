@@ -1,0 +1,20 @@
+[package]
+name = "libmnfts"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+crate-type = ["staticlib", "lib"]
+
+[dependencies]
+libc = "0.2"
+ntfs = "0.4"
+thiserror = "2"
+tracing = "0.1"
+
+[build-dependencies]
+cbindgen = "0.28"
+
+[dev-dependencies]
+tracing-subscriber = "0.3"
