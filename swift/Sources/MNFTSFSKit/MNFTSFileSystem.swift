@@ -7,10 +7,11 @@ import Foundation
 ///
 /// Architecture:
 ///   FSKit extension (System Extension)
-///     -> MNFTSFileSystem (this module)
-///       -> FFIBridge (Swift)
-///         -> libmnfts (Rust, via C-ABI)
-///           -> ntfs crate (NTFS parsing)
+///     -> MNFTSExtension (FSUnaryFileSystem subclass)
+///       -> MNFTSVolume (volume operations)
+///         -> MNFTSBridge / FFIBridge (Swift)
+///           -> libmnfts (Rust, via C-ABI)
+///             -> ntfs crate (NTFS parsing)
 ///
 /// Current status: FFI bridge is fully wired. FSKit extension
 /// packaging requires an Xcode project with System Extension target.
@@ -19,7 +20,7 @@ public final class MNFTSFileSystem: @unchecked Sendable {
     public static let name = "mNFTS"
     public static let version = "0.1.0"
 
-    private var volumeHandle: UnsafeMutableRawPointer?
+    private var volume: MNFTSVolume?
     private let lock = NSLock()
 
     public init() {}
@@ -33,11 +34,8 @@ public final class MNFTSFileSystem: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
 
-        if volumeHandle != nil {
-            close()
-        }
-        volumeHandle = MNFTSBridge.openVolume(fd: fd)
-        return volumeHandle != nil
+        volume = MNFTSVolume(fd: fd)
+        return volume != nil
     }
 
     /// Close the volume.
@@ -45,58 +43,42 @@ public final class MNFTSFileSystem: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
 
-        if let handle = volumeHandle {
-            MNFTSBridge.closeVolume(handle)
-            volumeHandle = nil
-        }
+        // MNFTSVolume's deinit calls MNFTSBridge.closeVolume
+        volume = nil
     }
 
     /// Get the volume label.
     public func label() -> String {
         lock.lock()
         defer { lock.unlock() }
-        guard let handle = volumeHandle else { return "NTFS" }
-        return MNFTSBridge.volumeLabel(handle)
+        return volume?.label ?? "NTFS"
     }
 
     /// Check if volume is healthy.
     public func isHealthy() -> Bool {
         lock.lock()
         defer { lock.unlock() }
-        guard let handle = volumeHandle else { return false }
-        return MNFTSBridge.volumeIsHealthy(handle)
+        return volume?.isHealthy ?? false
     }
 
     /// List directory entries.
     public func listDirectory(path: String) -> [MNFTSBridge.DirEntry] {
         lock.lock()
         defer { lock.unlock() }
-        guard let handle = volumeHandle else { return [] }
-        return MNFTSBridge.readDirectory(handle, path: path)
+        return volume?.listDirectory(path: path) ?? []
     }
 
     /// Get file info at path.
     public func stat(path: String) -> MNFTSBridge.DirEntry? {
         lock.lock()
         defer { lock.unlock() }
-        guard let handle = volumeHandle else { return nil }
-        guard let info = MNFTSBridge.stat(handle, path: path) else { return nil }
-        return MNFTSBridge.DirEntry(
-            name: String(path.split(separator: "/").last ?? ""),
-            isDirectory: info.is_directory,
-            fileSize: info.file_size,
-            mftReference: info.mft_reference,
-            createdSecs: info.created_secs,
-            modifiedSecs: info.modified_secs,
-            accessedSecs: info.accessed_secs
-        )
+        return volume?.stat(path: path)
     }
 
     /// Read file data by MFT reference.
     public func readFile(mftReference: UInt64, offset: UInt64, length: UInt32) -> Data? {
         lock.lock()
         defer { lock.unlock() }
-        guard let handle = volumeHandle else { return nil }
-        return MNFTSBridge.readFile(handle, mftReference: mftReference, offset: offset, length: length)
+        return volume?.readFile(mftReference: mftReference, offset: offset, length: length)
     }
 }
