@@ -21,15 +21,21 @@ let package = Package(
         .target(
             name: "MNFTSFSKit",
             dependencies: ["CLibMNFTS"],
+            exclude: ["Info.plist"],
             linkerSettings: [
-                .linkedLibrary("mnfts", .when(platforms: [.macOS])),
-                .unsafeFlags(["-L../../target/release"], .when(platforms: [.macOS])),
+                .linkedLibrary("libmnfts", .when(platforms: [.macOS])),
+                .unsafeFlags(["-L../target/release"], .when(platforms: [.macOS])),
             ]
         ),
         .executableTarget(
             name: "MNFTSCLI",
             dependencies: [
+                "CLibMNFTS",
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
+            ],
+            linkerSettings: [
+                .linkedLibrary("libmnfts", .when(platforms: [.macOS])),
+                .unsafeFlags(["-L../target/release"], .when(platforms: [.macOS])),
             ]
         ),
         .executableTarget(

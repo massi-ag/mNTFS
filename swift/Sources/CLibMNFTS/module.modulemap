@@ -1,5 +1,5 @@
 module CLibMNFTS {
     header "../../../crates/libmnfts/include/libmnfts.h"
-    link "mnfts"
+    link "libmnfts"
     export *
 }
