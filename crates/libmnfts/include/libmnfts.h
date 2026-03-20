@@ -64,6 +64,32 @@ typedef struct mnfts_MnftsFileInfo {
 } mnfts_MnftsFileInfo;
 
 /**
+ * Volume inspection result. Caller-allocated.
+ */
+typedef struct mnfts_MnftsInspectInfo {
+  uint32_t cluster_size;
+  uint16_t sector_size;
+  uint64_t total_sectors;
+  uint64_t volume_serial;
+  bool dirty_flag;
+  /**
+   * NTFS major version
+   */
+  uint8_t version_major;
+  /**
+   * NTFS minor version
+   */
+  uint8_t version_minor;
+} mnfts_MnftsInspectInfo;
+
+/**
+ * Doctor report callback. Called once per message line.
+ */
+typedef void (*mnfts_MnftsDoctorCallback)(void *context,
+                                          const uint8_t *message_ptr,
+                                          uint32_t message_len);
+
+/**
  * Returns MnftsResult::Ok. Used to verify FFI linkage works.
  */
 enum mnfts_MnftsResult mnfts_ping(void);
@@ -127,5 +153,24 @@ enum mnfts_MnftsResult mnfts_read_file(struct mnfts_MnftsVolumeHandle *handle,
                                        uint8_t *buf,
                                        uint32_t buf_len,
                                        uint32_t *out_len);
+
+/**
+ * Inspect an NTFS volume from a file descriptor.
+ * Fills caller-allocated MnftsInspectInfo and writes volume label to label_buf.
+ */
+enum mnfts_MnftsResult mnfts_inspect(int32_t fd,
+                                     struct mnfts_MnftsInspectInfo *out,
+                                     uint8_t *label_buf,
+                                     uint32_t label_buf_len,
+                                     uint32_t *label_out_len);
+
+/**
+ * Run health check on an NTFS volume from a file descriptor.
+ * Calls callback once per diagnostic message. Sets out_healthy.
+ */
+enum mnfts_MnftsResult mnfts_doctor(int32_t fd,
+                                    bool *out_healthy,
+                                    mnfts_MnftsDoctorCallback callback,
+                                    void *context);
 
 #endif  /* LIBMNFTS_H */

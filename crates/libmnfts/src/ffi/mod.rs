@@ -6,7 +6,9 @@ pub mod types;
 
 use std::io::{BufReader, Read, Seek};
 use std::sync::Mutex;
-use types::{MnftsDirEntryCallback, MnftsFileInfo, MnftsResult};
+use types::{
+    MnftsDirEntryCallback, MnftsDoctorCallback, MnftsFileInfo, MnftsInspectInfo, MnftsResult,
+};
 
 use crate::error::MnftsError;
 use crate::fs::{list_directory, read_file_range};
@@ -305,6 +307,108 @@ pub unsafe extern "C" fn mnfts_read_file(
                 unsafe {
                     std::ptr::copy_nonoverlapping(data.as_ptr(), buf, copy_len);
                     *out_len = copy_len as u32;
+                }
+                MnftsResult::Ok
+            }
+            Err(e) => error_to_result(&e),
+        }
+    });
+
+    result.unwrap_or(MnftsResult::ErrInternal)
+}
+
+// --- Inspect and Doctor (file-descriptor based) ---
+
+/// Inspect an NTFS volume from a file descriptor.
+/// Fills caller-allocated MnftsInspectInfo and writes volume label to label_buf.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mnfts_inspect(
+    fd: i32,
+    out: *mut MnftsInspectInfo,
+    label_buf: *mut u8,
+    label_buf_len: u32,
+    label_out_len: *mut u32,
+) -> MnftsResult {
+    if out.is_null() || label_buf.is_null() || label_out_len.is_null() {
+        return MnftsResult::ErrNullPointer;
+    }
+
+    let result = std::panic::catch_unwind(|| {
+        use std::os::unix::io::FromRawFd;
+        let new_fd = unsafe { libc::dup(fd) };
+        if new_fd < 0 {
+            return MnftsResult::ErrIo;
+        }
+        let file = unsafe { std::fs::File::from_raw_fd(new_fd) };
+        let mut reader = BufReader::with_capacity(64 * 1024, file);
+
+        match crate::inspect::inspect_volume(&mut reader) {
+            Ok(info) => {
+                let version_parts: Vec<&str> = info.ntfs_version.split('.').collect();
+                let major = version_parts
+                    .first()
+                    .and_then(|s| s.parse().ok())
+                    .unwrap_or(0);
+                let minor = version_parts
+                    .get(1)
+                    .and_then(|s| s.parse().ok())
+                    .unwrap_or(0);
+
+                let out_ref = unsafe { &mut *out };
+                out_ref.cluster_size = info.cluster_size;
+                out_ref.sector_size = info.sector_size;
+                out_ref.total_sectors = info.total_sectors;
+                out_ref.volume_serial = info.volume_serial;
+                out_ref.dirty_flag = info.dirty_flag;
+                out_ref.version_major = major;
+                out_ref.version_minor = minor;
+
+                let label_bytes = info.volume_label.as_bytes();
+                let copy_len = label_bytes.len().min(label_buf_len as usize);
+                unsafe {
+                    std::ptr::copy_nonoverlapping(label_bytes.as_ptr(), label_buf, copy_len);
+                    *label_out_len = copy_len as u32;
+                }
+
+                MnftsResult::Ok
+            }
+            Err(e) => error_to_result(&e),
+        }
+    });
+
+    result.unwrap_or(MnftsResult::ErrInternal)
+}
+
+/// Run health check on an NTFS volume from a file descriptor.
+/// Calls callback once per diagnostic message. Sets out_healthy.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mnfts_doctor(
+    fd: i32,
+    out_healthy: *mut bool,
+    callback: MnftsDoctorCallback,
+    context: *mut std::ffi::c_void,
+) -> MnftsResult {
+    if out_healthy.is_null() {
+        return MnftsResult::ErrNullPointer;
+    }
+
+    let result = std::panic::catch_unwind(|| {
+        use std::os::unix::io::FromRawFd;
+        let new_fd = unsafe { libc::dup(fd) };
+        if new_fd < 0 {
+            return MnftsResult::ErrIo;
+        }
+        let file = unsafe { std::fs::File::from_raw_fd(new_fd) };
+        let mut reader = BufReader::with_capacity(64 * 1024, file);
+
+        match crate::doctor::check_volume(&mut reader) {
+            Ok(report) => {
+                unsafe { *out_healthy = report.healthy };
+                for msg in &report.messages {
+                    let bytes = msg.as_bytes();
+                    unsafe {
+                        callback(context, bytes.as_ptr(), bytes.len() as u32);
+                    }
                 }
                 MnftsResult::Ok
             }
