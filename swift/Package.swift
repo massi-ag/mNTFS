@@ -39,6 +39,16 @@ let package = Package(
             ]
         ),
         .executableTarget(
+            name: "MNFTSExtension",
+            dependencies: ["MNFTSFSKit"],
+            exclude: ["Info.plist"],
+            linkerSettings: [
+                .linkedFramework("FSKit"),
+                .linkedLibrary("libmnfts", .when(platforms: [.macOS])),
+                .unsafeFlags(["-L../target/release"], .when(platforms: [.macOS])),
+            ]
+        ),
+        .executableTarget(
             name: "MNFTSWatchdog",
             dependencies: [],
             exclude: ["com.mnfts.watchdog.plist"]

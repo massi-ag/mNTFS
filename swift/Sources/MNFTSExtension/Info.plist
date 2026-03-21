@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleIdentifier</key>
+    <string>com.mnfts.extension</string>
+    <key>CFBundleName</key>
+    <string>mNFTS</string>
+    <key>CFBundleDisplayName</key>
+    <string>mNFTS NTFS Driver</string>
+    <key>CFBundleVersion</key>
+    <string>0.1.0</string>
+    <key>CFBundleShortVersionString</key>
+    <string>0.1.0</string>
+    <key>CFBundlePackageType</key>
+    <string>XPC!</string>
+    <key>CFBundleExecutable</key>
+    <string>MNFTSExtension</string>
+    <key>EXAppExtensionAttributes</key>
+    <dict>
+        <key>EXExtensionPointIdentifier</key>
+        <string>com.apple.fskit.fsmodule</string>
+        <key>FSShortName</key>
+        <string>mntfs</string>
+        <key>FSPersonalities</key>
+        <dict>
+            <key>NTFS</key>
+            <dict>
+                <key>FSName</key>
+                <string>NTFS</string>
+                <key>FSfileObjectsAreCaseSensitive</key>
+                <false/>
+            </dict>
+        </dict>
+        <key>FSSupportsBlockResources</key>
+        <true/>
+        <key>FSSupportsGenericURLResources</key>
+        <false/>
+        <key>FSSupportsPathURLs</key>
+        <false/>
+        <key>FSSupportsServerURLs</key>
+        <false/>
+        <key>FSMediaTypes</key>
+        <dict>
+            <key>07C5220B-868A-11D1-99F7-00A0C9636E34</key>
+            <dict>
+                <key>FSMediaProperties</key>
+                <dict>
+                    <key>Removable</key>
+                    <true/>
+                    <key>WholeDevice</key>
+                    <false/>
+                    <key>Leaf</key>
+                    <true/>
+                </dict>
+            </dict>
+        </dict>
+    </dict>
+</dict>
+</plist>
